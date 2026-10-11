@@ -30,47 +30,50 @@ Por defecto, scrcpy requiere el uso de parámetros mediante la línea de comando
 * Librería `customtkinter`:
   ```bash
   pip install customtkinter
-Instalación y Configuración
-Clonar o descargar el repositorio:
+  ```
 
-Bash
-git clone [https://github.com/ImJustSebas/Scrpy-with-UI.git](https://github.com/ImJustSebas/Scrpy-with-UI.git)
-Ubicación de archivos:
-Asegúrese de que el archivo UI.py se encuentre en el mismo directorio que los ejecutables binarios de scrcpy (scrcpy.exe, adb.exe y las librerías .dll adjuntas).
+---
 
-Modo de Uso
-1. Ejecución vía Cable USB
-Conecte su dispositivo Android a la computadora mediante un cable USB.
+## Instalación y Configuración
 
-Ejecute el script de la interfaz:
+1. **Clonar o descargar el repositorio:**
+   ```bash
+   git clone https://github.com/ImJustSebas/Scrpy-with-UI.git
+   ```
+2. **Ubicación de archivos:**
+   Asegúrese de que el archivo `UI.py` se encuentre en el mismo directorio que los ejecutables binarios de scrcpy (`scrcpy.exe`, `adb.exe` y las librerías `.dll` adjuntas).
 
-Bash
-python UI.py
-Seleccione el dispositivo detectado en el menú desplegable (presione el botón de actualizar si no aparece inmediatamente).
+---
 
-Configure los parámetros deseados (Resolución, Bitrate, FPS).
+## Modo de Uso
 
-Presione el botón INICIAR TRANSMISIÓN.
+### 1. Ejecución vía Cable USB
+1. Conecte su dispositivo Android a la computadora mediante un cable USB.
+2. Ejecute el script de la interfaz:
+   ```bash
+   python UI.py
+   ```
+3. Seleccione el dispositivo detectado en el menú desplegable (presione el botón de actualizar si no aparece inmediatamente).
+4. Configure los parámetros deseados (Resolución, Bitrate, FPS).
+5. Presione el botón **INICIAR TRANSMISIÓN**.
 
-2. Ejecución vía Wi-Fi
-Asegúrese de que el dispositivo y la PC estén conectados a la misma red local.
+### 2. Ejecución vía Wi-Fi
+1. Asegúrese de que el dispositivo y la PC estén conectados a la misma red local.
+2. Seleccione la pestaña **Conexión Wi-Fi** en la interfaz.
+3. Ingrese la dirección IP del teléfono y el puerto correspondiente (por defecto `5555`).
+4. Haga clic en **Conectar Wi-Fi**.
+5. Tras confirmarse la conexión, seleccione el dispositivo y presione **INICIAR TRANSMISIÓN**.
 
-Seleccione la pestaña Conexión Wi-Fi en la interfaz.
+---
 
-Ingrese la dirección IP del teléfono y el puerto correspondiente (por defecto 5555).
+## Estructura del Repositorio
 
-Haga clic en Conectar Wi-Fi.
+* `UI.py`: Script principal en Python que contiene la interfaz gráfica.
+* `scrcpy.exe` & `adb.exe`: Binarios de ejecución de scrcpy y Android Debug Bridge.
+* Archivos DLL (`avcodec-61.dll`, `SDL2.dll`, etc.): Librerías necesarias para el procesamiento de video y audio.
 
-Tras confirmarse la conexión, seleccione el dispositivo y presione INICIAR TRANSMISIÓN.
+---
 
-Estructura del Repositorio
-UI.py: Script principal en Python que contiene la interfaz gráfica.
-
-scrcpy.exe & adb.exe: Binarios de ejecución de scrcpy y Android Debug Bridge.
-
-Archivos DLL (avcodec-61.dll, SDL2.dll, etc.): Librerías necesarias para el procesamiento de video y audio.
-
-Créditos y Licencia
-scrcpy es desarrollado por Genymobile y está distribuido bajo la licencia Apache 2.0.
-
-Este proyecto actúa como una capa de interfaz (Wrapper GUI) no oficial para facilitar el acceso a sus parámetros.
+## Créditos y Licencia
+* **scrcpy** es desarrollado por Genymobile y está distribuido bajo la licencia Apache 2.0.
+* Este proyecto actúa como una capa de interfaz (Wrapper GUI) no oficial para facilitar el acceso a sus parámetros.
