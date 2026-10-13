@@ -1,6 +1,8 @@
 import os
 import subprocess
 import threading
+import ctypes
+from ctypes import wintypes
 import tkinter as tk
 from tkinter import messagebox
 import customtkinter as ctk
@@ -8,6 +10,58 @@ import customtkinter as ctk
 # Configuración del tema de CustomTkinter
 ctk.set_appearance_mode("Dark")  # Opciones: "System", "Dark", "Light"
 ctk.set_default_color_theme("blue")
+
+
+# --- Utilidades de Windows para pausar/ocultar la ventana de scrcpy ---
+def _get_windows_for_pid(pid):
+    """Devuelve los HWND visibles de las ventanas de nivel superior del PID dado."""
+    if os.name != 'nt':
+        return []
+    user32 = ctypes.windll.user32
+    hwnds = []
+    EnumWindowsProc = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+
+    def callback(hwnd, lparam):
+        wpid = wintypes.DWORD()
+        user32.GetWindowThreadProcessId(hwnd, ctypes.byref(wpid))
+        if wpid.value == pid and user32.IsWindowVisible(hwnd):
+            hwnds.append(hwnd)
+        return True
+
+    user32.EnumWindows(EnumWindowsProc(callback), 0)
+    return hwnds
+
+
+def _set_window_visibility(hwnd, visible):
+    """Muestra u oculta una ventana (SW_SHOW / SW_HIDE)."""
+    if os.name != 'nt':
+        return
+    SW_HIDE = 0
+    SW_SHOW = 5
+    ctypes.windll.user32.ShowWindow(hwnd, SW_SHOW if visible else SW_HIDE)
+
+
+def _suspend_process(pid):
+    """Suspende todos los hilos del proceso (pausa real)."""
+    if os.name != 'nt':
+        return
+    PROCESS_ALL_ACCESS = 0x1F0FFF
+    handle = ctypes.windll.kernel32.OpenProcess(PROCESS_ALL_ACCESS, False, pid)
+    if handle:
+        ctypes.windll.ntdll.NtSuspendProcess(handle)
+        ctypes.windll.kernel32.CloseHandle(handle)
+
+
+def _resume_process(pid):
+    """Reanuda todos los hilos del proceso previamente suspendido."""
+    if os.name != 'nt':
+        return
+    PROCESS_ALL_ACCESS = 0x1F0FFF
+    handle = ctypes.windll.kernel32.OpenProcess(PROCESS_ALL_ACCESS, False, pid)
+    if handle:
+        ctypes.windll.ntdll.NtResumeProcess(handle)
+        ctypes.windll.kernel32.CloseHandle(handle)
+
 
 class ScrcpyProLauncher(ctk.CTk):
     def __init__(self):
@@ -32,6 +86,11 @@ class ScrcpyProLauncher(ctk.CTk):
             "QHD (1440p)": "2560",
             "4K (2160p)": "3840"
         }
+
+        # Estado del proceso scrcpy (para pausa/reanudar)
+        self.scrcpy_process = None
+        self.is_paused = False
+        self._paused_hwnds = []
 
         self.create_ui()
         self.refresh_devices()
@@ -126,9 +185,12 @@ class ScrcpyProLauncher(ctk.CTk):
         self.sw_stay_awake = ctk.CTkSwitch(options_frame, text="Evitar que el móvil entre en reposo (--stay-awake)")
         self.sw_stay_awake.pack(anchor="w", pady=5)
 
-        # --- BOTÓN DE INICIO ---
+        # --- BOTONES DE CONTROL (INICIAR + PAUSA) ---
+        button_frame = ctk.CTkFrame(self, fg_color="transparent")
+        button_frame.pack(fill="x", padx=20, pady=(10, 20))
+
         self.btn_launch = ctk.CTkButton(
-            self, 
+            button_frame, 
             text="INICIAR TRANSMISIÓN", 
             font=ctk.CTkFont(size=15, weight="bold"),
             height=45,
@@ -136,7 +198,20 @@ class ScrcpyProLauncher(ctk.CTk):
             hover_color="#14375e",
             command=self.launch_scrcpy
         )
-        self.btn_launch.pack(fill="x", padx=20, pady=(10, 20))
+        self.btn_launch.pack(side="left", fill="x", expand=True, padx=(0, 5))
+
+        self.btn_pause = ctk.CTkButton(
+            button_frame,
+            text="⏸ PAUSA",
+            font=ctk.CTkFont(size=15, weight="bold"),
+            height=45,
+            width=150,
+            fg_color="#7a5900",
+            hover_color="#5a4100",
+            state="disabled",
+            command=self.toggle_pause
+        )
+        self.btn_pause.pack(side="left", padx=(5, 0))
 
     # --- LÓGICA DE ADB Y SCRCPY ---
 
@@ -196,6 +271,15 @@ class ScrcpyProLauncher(ctk.CTk):
             messagebox.showwarning("Atención", "No hay ningún dispositivo seleccionado o detectado.")
             return
 
+        # Si ya hay un proceso activo, lo cerramos antes de lanzar otro
+        if self.scrcpy_process and self.scrcpy_process.poll() is None:
+            try:
+                if self.is_paused:
+                    _resume_process(self.scrcpy_process.pid)
+                self.scrcpy_process.terminate()
+            except Exception:
+                pass
+
         # Construcción básica del comando
         cmd = [self.scrcpy_path, "-s", device]
 
@@ -227,9 +311,76 @@ class ScrcpyProLauncher(ctk.CTk):
         # Ejecución del proceso
         creation_flags = subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
         try:
-            subprocess.Popen(cmd, creationflags=creation_flags)
+            self.scrcpy_process = subprocess.Popen(cmd, creationflags=creation_flags)
+            self.is_paused = False
+            self._paused_hwnds = []
+            self.btn_pause.configure(
+                state="normal",
+                text="⏸ PAUSA",
+                fg_color="#7a5900",
+                hover_color="#5a4100"
+            )
+            # Iniciar monitor para deshabilitar la pausa si scrcpy se cierra
+            self.after(1000, self._monitor_process)
         except Exception as e:
             messagebox.showerror("Error de ejecución", f"Ocurrió un problema al iniciar scrcpy:\n{e}")
+
+    def toggle_pause(self):
+        """Pausa o reanuda la ventana de scrcpy (oculta + suspende el proceso)."""
+        if self.scrcpy_process is None or self.scrcpy_process.poll() is not None:
+            messagebox.showinfo("Información", "No hay ninguna transmisión activa.")
+            self.btn_pause.configure(state="disabled")
+            return
+
+        pid = self.scrcpy_process.pid
+
+        if not self.is_paused:
+            # --- PAUSAR: guardar HWNDs, ocultar ventanas y suspender el proceso ---
+            self._paused_hwnds = _get_windows_for_pid(pid)
+            for hwnd in self._paused_hwnds:
+                _set_window_visibility(hwnd, False)
+            _suspend_process(pid)
+
+            self.is_paused = True
+            self.btn_pause.configure(
+                text="▶ REANUDAR",
+                fg_color="#1f7a1f",
+                hover_color="#155515"
+            )
+        else:
+            # --- REANUDAR: reactivar proceso y volver a mostrar la ventana ---
+            _resume_process(pid)
+
+            hwnds = self._paused_hwnds or _get_windows_for_pid(pid)
+            for hwnd in hwnds:
+                _set_window_visibility(hwnd, True)
+            self._paused_hwnds = []
+
+            self.is_paused = False
+            self.btn_pause.configure(
+                text="⏸ PAUSA",
+                fg_color="#7a5900",
+                hover_color="#5a4100"
+            )
+
+    def _monitor_process(self):
+        """Comprueba si scrcpy sigue vivo para habilitar/deshabilitar el botón de pausa."""
+        if self.scrcpy_process is None:
+            return
+        if self.scrcpy_process.poll() is not None:
+            # El proceso terminó: reiniciar estado del botón
+            self.scrcpy_process = None
+            self.is_paused = False
+            self._paused_hwnds = []
+            self.btn_pause.configure(
+                state="disabled",
+                text="⏸ PAUSA",
+                fg_color="#7a5900",
+                hover_color="#5a4100"
+            )
+        else:
+            self.after(1000, self._monitor_process)
+
 
 if __name__ == "__main__":
     app = ScrcpyProLauncher()
